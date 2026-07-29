@@ -68,6 +68,28 @@ loom escalate --question "..." --option a --option b --recommend a \
   --blocking <id> --deadline 2026-08-01T00:00:00Z --default a
 ```
 
+## Using loom with an agent
+
+loom is meant to be driven by coding agents, not typed by hand. The loop is the same regardless of which agent runs it: `next` → `lease` → `heartbeat --daemon` → do the work → `attempt` (on failure) or `verify` + `done` (on success), reacting to exit codes 2/3/4/5 instead of retrying blindly. Give each agent a distinct `LOOM_AGENT` identity — without it, every agent collapses onto `git config user.email` and the independent-verdict gate can't tell them apart.
+
+### Claude Code
+
+This repo ships a skill at [`.claude/skills/loom/SKILL.md`](.claude/skills/loom/SKILL.md) that encodes the full loop above, including how to react to each exit code and when to escalate instead of guessing. Claude Code picks it up automatically in this repo. To use loom in another project, copy that file to `.claude/skills/loom/SKILL.md` there (or symlink it if you're vendoring loom as a submodule).
+
+### GitHub Copilot
+
+Copilot doesn't have a skill mechanism; put equivalent guidance in `.github/copilot-instructions.md` in the target repo, e.g.:
+
+```markdown
+This repo tracks work with loom (.work/tasks/). Before starting work:
+run `loom next` to pick a task, `loom lease <id>` to claim it, then
+`loom heartbeat <id> --daemon`. Read `loom show <id>` for prior attempts
+and lessons first. On failure, run `loom attempt` with a --lesson instead
+of retrying past the tier budget. On success, a *different* identity must
+run `loom verify <id> --approve` before `loom done <id>` will succeed.
+Set LOOM_AGENT to a stable identity before running any loom command.
+```
+
 ## Commands
 
 | Command | Purpose |
