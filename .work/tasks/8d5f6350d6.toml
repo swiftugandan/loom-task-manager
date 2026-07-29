@@ -4,10 +4,11 @@ state = "open"
 value = 3.0
 deps = []
 contract = []
-accept = []
+accept = ["tests/skill_coverage.rs"]
 context = [
     "plugins/loom-task-manager/skills/loom/SKILL.md",
     "knowledge/README.md",
+    "scripts/sync-agent-skill.sh",
 ]
 tier_initial = 0
 created = "2026-07-29T13:59:33.351833Z"
