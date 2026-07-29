@@ -72,23 +72,12 @@ loom escalate --question "..." --option a --option b --recommend a \
 
 loom is meant to be driven by coding agents, not typed by hand. The loop is the same regardless of which agent runs it: `next` → `lease` → `heartbeat --daemon` → do the work → `attempt` (on failure) or `verify` + `done` (on success), reacting to exit codes 2/3/4/5 instead of retrying blindly. Give each agent a distinct `LOOM_AGENT` identity — without it, every agent collapses onto `git config user.email` and the independent-verdict gate can't tell them apart.
 
-### Claude Code
+This repo ships that loop as an [Agent Skill](https://github.blog/changelog/2025-12-18-github-copilot-now-supports-agent-skills/) — a `SKILL.md` describing when to use loom and how to react to each exit code, in the open format shared by Claude Code and GitHub Copilot. The same file lives at both discovery paths so either tool picks it up automatically in this repo:
 
-This repo ships a skill at [`.claude/skills/loom/SKILL.md`](.claude/skills/loom/SKILL.md) that encodes the full loop above, including how to react to each exit code and when to escalate instead of guessing. Claude Code picks it up automatically in this repo. To use loom in another project, copy that file to `.claude/skills/loom/SKILL.md` there (or symlink it if you're vendoring loom as a submodule).
+- [`.claude/skills/loom/SKILL.md`](.claude/skills/loom/SKILL.md) — Claude Code
+- [`.github/skills/loom/SKILL.md`](.github/skills/loom/SKILL.md) — GitHub Copilot (VS Code/JetBrains agent mode, Copilot CLI, and the cloud coding agent)
 
-### GitHub Copilot
-
-Copilot doesn't have a skill mechanism; put equivalent guidance in `.github/copilot-instructions.md` in the target repo, e.g.:
-
-```markdown
-This repo tracks work with loom (.work/tasks/). Before starting work:
-run `loom next` to pick a task, `loom lease <id>` to claim it, then
-`loom heartbeat <id> --daemon`. Read `loom show <id>` for prior attempts
-and lessons first. On failure, run `loom attempt` with a --lesson instead
-of retrying past the tier budget. On success, a *different* identity must
-run `loom verify <id> --approve` before `loom done <id>` will succeed.
-Set LOOM_AGENT to a stable identity before running any loom command.
-```
+To use loom in another project, copy the file to whichever of those paths (or both) match the agents working in that repo. `~/.copilot/skills/loom/SKILL.md` also works if you want it available to Copilot across every repo instead of just one.
 
 ## Commands
 
