@@ -1091,4 +1091,55 @@ mod tests {
         assert_eq!(e.answer.as_deref(), Some("a"));
         r.assert_done();
     }
+
+    /// Institutional memory reaches every agent because the hydration manifest
+    /// carries it, so a task that never cited `knowledge/` still gets the index.
+    #[test]
+    fn context_manifest_indexes_knowledge_without_per_task_opt_in() {
+        let (tmp, ws) = workspace();
+        seed(&ws, "abc", true);
+        let kdir = tmp.path().join(KNOWLEDGE_DIR);
+        std::fs::create_dir_all(&kdir).unwrap();
+        std::fs::write(kdir.join("pre-commit-gate.md"), "gate lesson").unwrap();
+        std::fs::write(kdir.join("README.md"), "index").unwrap();
+        std::fs::write(kdir.join("scratch.txt"), "not knowledge").unwrap();
+
+        let r = MockRunner::new(vec![]);
+        let ctx = Ctx {
+            runner: &r,
+            ws,
+            policy: Policy::default(),
+        };
+        let manifest = context_manifest(&ctx, "abc").unwrap();
+
+        // The task itself declares no context — the index is unconditional.
+        assert!(manifest["context"].as_array().unwrap().is_empty());
+        let rows = manifest["knowledge"].as_array().unwrap();
+        let paths: Vec<&str> = rows.iter().map(|r| r["path"].as_str().unwrap()).collect();
+        assert_eq!(
+            paths,
+            vec!["knowledge/README.md", "knowledge/pre-commit-gate.md"],
+            "markdown under knowledge/ is indexed, sorted, and .txt is excluded"
+        );
+        assert_eq!(rows[0]["kind"], "file");
+        assert_eq!(rows[1]["bytes"], "gate lesson".len());
+        r.assert_done();
+    }
+
+    /// A repo with no `knowledge/` directory still emits the key, so consumers
+    /// read an empty index rather than branching on its absence.
+    #[test]
+    fn context_manifest_knowledge_is_empty_when_dir_is_absent() {
+        let (_tmp, ws) = workspace();
+        seed(&ws, "abc", true);
+        let r = MockRunner::new(vec![]);
+        let ctx = Ctx {
+            runner: &r,
+            ws,
+            policy: Policy::default(),
+        };
+        let manifest = context_manifest(&ctx, "abc").unwrap();
+        assert!(manifest["knowledge"].as_array().unwrap().is_empty());
+        r.assert_done();
+    }
 }

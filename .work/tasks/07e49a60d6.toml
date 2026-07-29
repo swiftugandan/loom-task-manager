@@ -4,7 +4,7 @@ state = "open"
 value = 2.0
 deps = []
 contract = []
-accept = []
+accept = ["src/commands.rs"]
 context = [
     "src/commands.rs",
     "src/model.rs",
