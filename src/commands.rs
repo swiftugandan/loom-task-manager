@@ -19,7 +19,7 @@ use crate::error::{Error, Result};
 use crate::git::Git;
 use crate::model::{
     new_id, parse_toml_str, AttemptRecord, Escalation, LeasePayload, Policy, Task, TaskState,
-    Verdict, Workspace, WORK_DIR,
+    Verdict, Workspace, KNOWLEDGE_DIR, WORK_DIR,
 };
 use crate::protocol::{self, Derived};
 use crate::runner::Runner;
@@ -775,6 +775,27 @@ pub fn telemetry(ctx: &Ctx, commit: &str, record_json: &str) -> Result<()> {
     ctx.git().record_telemetry(commit, &record)
 }
 
+/// Knowledge files already on disk, repo-relative and sorted. Feeds retro so a
+/// candidate can say whether its file exists — append versus create.
+fn existing_knowledge(ctx: &Ctx) -> Vec<String> {
+    let dir = ctx.ws.root.join(KNOWLEDGE_DIR);
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("md"))
+        .filter_map(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| format!("{KNOWLEDGE_DIR}/{n}"))
+        })
+        .collect();
+    out.sort();
+    out
+}
+
 /// The read half of the learning loop: aggregate telemetry + attempts,
 /// emit a report with mechanical policy suggestions.
 pub fn retro(ctx: &Ctx) -> Result<()> {
@@ -782,7 +803,7 @@ pub fn retro(ctx: &Ctx) -> Result<()> {
     git.fetch_loom_refs()?;
     let records = git.telemetry_records()?;
     let attempts = git.attempts()?;
-    let report = protocol::retro(&records, &attempts, &ctx.policy);
+    let report = protocol::retro(&records, &attempts, &ctx.policy, &existing_knowledge(ctx));
     println!("{}", serde_json::to_string_pretty(&report)?);
     eprintln!("loom: apply accepted suggestions as a reviewed diff to .work/policy.toml — retros that don't change config didn't happen");
     Ok(())

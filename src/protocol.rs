@@ -218,7 +218,9 @@ pub fn retro(
     telemetry: &[Value],
     attempts: &BTreeMap<String, Vec<AttemptRecord>>,
     policy: &Policy,
+    existing_knowledge: &[String],
 ) -> Value {
+    let _ = existing_knowledge;
     let merged: Vec<&Value> = telemetry
         .iter()
         .filter(|r| r.get("outcome").and_then(Value::as_str) == Some("merged"))
@@ -307,12 +309,16 @@ mod tests {
     }
 
     fn attempt(task: &str, outcome: &str, at: &str) -> AttemptRecord {
+        attempt_lesson(task, outcome, "l", at)
+    }
+
+    fn attempt_lesson(task: &str, outcome: &str, lesson: &str, at: &str) -> AttemptRecord {
         AttemptRecord {
             task: task.into(),
             tier: 0,
             sha: "s".into(),
             outcome: outcome.into(),
-            lesson: "l".into(),
+            lesson: lesson.into(),
             agent: "a".into(),
             at: at.parse().unwrap(),
         }
@@ -444,12 +450,121 @@ mod tests {
                 attempt("a", "tests-red", "2026-07-01T02:00:00Z"),
             ],
         );
-        let report = retro(&telemetry, &attempts, &Policy::default());
+        let report = retro(&telemetry, &attempts, &Policy::default(), &[]);
         assert_eq!(report["merged"], 2);
         assert_eq!(report["attempts_total"], 3);
         assert_eq!(report["ladder_exhaustions"], 1);
         let s = report["suggestions"].as_array().unwrap();
         assert!(s.len() >= 3, "expected multiple suggestions, got {s:?}");
+    }
+
+    /// The write half of the learning loop: lessons the fleet keeps re-learning
+    /// become proposed `knowledge/<topic>.md` files, next to the policy
+    /// suggestions that target `.work/policy.toml`.
+    #[test]
+    fn retro_proposes_knowledge_files_for_lessons_learned_twice() {
+        let mut attempts = BTreeMap::new();
+        attempts.insert(
+            "a".into(),
+            vec![attempt_lesson(
+                "a",
+                "tests-red",
+                "Push probe output before continuing.",
+                "2026-07-01T00:00:00Z",
+            )],
+        );
+        attempts.insert(
+            "b".into(),
+            vec![
+                attempt_lesson(
+                    "b",
+                    "review-reject",
+                    "push probe output before continuing",
+                    "2026-07-01T01:00:00Z",
+                ),
+                attempt_lesson(
+                    "b",
+                    "tests-red",
+                    "a one-off detail nobody hits twice",
+                    "2026-07-01T02:00:00Z",
+                ),
+            ],
+        );
+
+        let report = retro(
+            &[],
+            &attempts,
+            &Policy::default(),
+            &["knowledge/README.md".to_string()],
+        );
+        let cands = report["knowledge_candidates"]
+            .as_array()
+            .expect("retro emits knowledge_candidates alongside suggestions");
+
+        let repeated = cands
+            .iter()
+            .find(|c| {
+                c["lessons"]
+                    .as_array()
+                    .is_some_and(|ls| ls.iter().any(|l| l == "Push probe output before continuing."))
+            })
+            .unwrap_or_else(|| panic!("lesson learned on two tasks becomes a candidate: {cands:?}"));
+
+        let path = repeated["path"].as_str().unwrap();
+        assert!(
+            path.starts_with("knowledge/") && path.ends_with(".md"),
+            "candidate path is a knowledge file, got {path}"
+        );
+        assert_eq!(repeated["tasks"], json!(["a", "b"]));
+        assert_eq!(repeated["exists"], json!(false));
+        assert!(
+            repeated["reason"].as_str().is_some_and(|r| !r.is_empty()),
+            "each candidate says why it earned a file"
+        );
+
+        assert!(
+            !cands.iter().any(|c| c["lessons"]
+                .as_array()
+                .is_some_and(|ls| ls.iter().any(|l| l == "a one-off detail nobody hits twice"))),
+            "a lesson seen once isn't institutional memory yet: {cands:?}"
+        );
+        assert!(report["suggestions"].is_array(), "policy half still emitted");
+    }
+
+    /// An outcome that keeps recurring across distinct tasks earns a file too,
+    /// and candidates say whether that file already exists so the agent knows
+    /// to append rather than clobber.
+    #[test]
+    fn retro_knowledge_candidates_group_recurring_outcomes_and_flag_existing_files() {
+        let mut attempts = BTreeMap::new();
+        for (i, id) in ["a", "b", "c"].iter().enumerate() {
+            attempts.insert(
+                (*id).into(),
+                vec![attempt_lesson(
+                    id,
+                    "review-reject",
+                    &format!("lesson from {id}"),
+                    &format!("2026-07-0{}T00:00:00Z", i + 1),
+                )],
+            );
+        }
+
+        let report = retro(
+            &[],
+            &attempts,
+            &Policy::default(),
+            &["knowledge/attempt-review-reject.md".to_string()],
+        );
+        let cands = report["knowledge_candidates"].as_array().unwrap();
+        let by_outcome = cands
+            .iter()
+            .find(|c| c["path"] == json!("knowledge/attempt-review-reject.md"))
+            .unwrap_or_else(|| panic!("recurring outcome earns a file: {cands:?}"));
+
+        assert_eq!(by_outcome["tasks"], json!(["a", "b", "c"]));
+        assert_eq!(by_outcome["exists"], json!(true));
+        let lessons = by_outcome["lessons"].as_array().unwrap();
+        assert_eq!(lessons.len(), 3, "the file carries its source lessons");
     }
 
     #[test]

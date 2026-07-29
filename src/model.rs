@@ -16,6 +16,10 @@ use crate::error::{Error, Result};
 
 pub const WORK_DIR: &str = ".work";
 
+/// Compounding institutional memory: one small fact file per topic, referenced
+/// from task context manifests. Retro proposes writes here.
+pub const KNOWLEDGE_DIR: &str = "knowledge";
+
 // ------------------------------------------------------------------- task
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

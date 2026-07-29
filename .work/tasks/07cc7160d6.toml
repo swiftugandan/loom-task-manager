@@ -4,10 +4,11 @@ state = "open"
 value = 3.0
 deps = []
 contract = []
-accept = []
+accept = ["src/protocol.rs"]
 context = [
     "src/protocol.rs",
     "src/commands.rs",
+    "src/model.rs",
     "knowledge/README.md",
 ]
 tier_initial = 0
