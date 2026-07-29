@@ -92,7 +92,29 @@ This repo ships that loop as an [Agent Skill](https://github.blog/changelog/2025
 - [`.claude/skills/loom/SKILL.md`](.claude/skills/loom/SKILL.md) — Claude Code
 - [`.github/skills/loom/SKILL.md`](.github/skills/loom/SKILL.md) — GitHub Copilot (VS Code/JetBrains agent mode, Copilot CLI, and the cloud coding agent)
 
-To use loom in another project, copy the file to whichever of those paths (or both) match the agents working in that repo. `~/.copilot/skills/loom/SKILL.md` also works if you want it available to Copilot across every repo instead of just one.
+Both are generated from [`plugins/loom-task-manager/skills/loom/SKILL.md`](plugins/loom-task-manager/skills/loom/SKILL.md) by `scripts/sync-agent-skill.sh`; edit the canonical copy and regenerate rather than editing a mirror.
+
+To use loom in another project with Copilot, copy the file to `.github/skills/loom/SKILL.md` there, or to `~/.copilot/skills/loom/SKILL.md` to make it available across every repo. For Claude Code, install the plugin below instead of copying anything.
+
+### Claude Code plugin
+
+This repo doubles as a [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces), so Claude Code can install the whole workflow in one step:
+
+```
+/plugin marketplace add swiftugandan/loom-task-manager
+/plugin install loom-task-manager@loom-task-manager
+```
+
+That adds four things on top of the bare skill:
+
+| Component | Name | Purpose |
+|---|---|---|
+| Skill | `loom-task-manager:loom` | The work loop above, keyed to loom's exit codes |
+| Skill | `loom-task-manager:setup` | One-time bootstrap for a repo: install, `loom init`, policy decisions, first push, first tasks |
+| Agent | `loom-task-manager:verifier` | Independent reviewer that publishes a verdict bound to a candidate sha, under its own `LOOM_AGENT` identity |
+| Hook | `PreToolUse` | Denies hand-writes to `.work/tasks/*.toml` and direct `refs/loom/*` ref writes, naming the owning subcommand instead |
+
+The last two are the point. `verify.mode = independent` needs a reviewer that is genuinely a different agent, and every loom guarantee holds only while mutations flow through a `loom` subcommand — so the plugin supplies a real second agent and a guard that makes the bypass impossible, rather than asking one agent to remember both rules. See [`plugins/loom-task-manager/README.md`](plugins/loom-task-manager/README.md) for details.
 
 ## Commands
 

@@ -1,0 +1,31 @@
+{
+  "name": "loom-task-manager",
+  "owner": {
+    "name": "Philip Munaawa",
+    "url": "https://github.com/swiftugandan"
+  },
+  "description": "Agent-native task management on a git substrate",
+  "plugins": [
+    {
+      "name": "loom-task-manager",
+      "source": "./plugins/loom-task-manager",
+      "description": "Drive loom-managed task graphs from Claude Code: pick, lease, timebox, verify, and close out tasks coordinated through git refs",
+      "version": "2.0.0",
+      "author": {
+        "name": "Philip Munaawa",
+        "url": "https://github.com/swiftugandan"
+      },
+      "homepage": "https://github.com/swiftugandan/loom-task-manager#readme",
+      "repository": "https://github.com/swiftugandan/loom-task-manager",
+      "license": "MIT",
+      "category": "workflow",
+      "tags": [
+        "task-management",
+        "multi-agent",
+        "orchestration",
+        "git",
+        "fleet"
+      ]
+    }
+  ]
+}
