@@ -206,3 +206,15 @@ Task identity, spec, and the two single-writer-under-lease mutations (probe outp
 cargo build
 cargo test
 ```
+
+### Pre-commit hook
+
+Hooks live in [`.githooks/`](.githooks) and are versioned with the repo. Enable them once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+`pre-commit` then gates every commit on five checks: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, the plugin hook-guard cases, and `scripts/sync-agent-skill.sh --check`.
+
+It runs them against a clean checkout of the index rather than the working tree, so what gets verified is exactly what gets committed - staging a broken file and fixing it locally afterwards still fails. The checkout shares `target/`, so the whole gate takes a few seconds warm. Bypass with `git commit --no-verify`.

@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+#
+# Pre-commit gate for loom.
+#
+# Every check runs against a clean checkout of the index, never the working tree,
+# so the thing being verified is exactly the thing being committed. Staging a
+# broken file and then fixing it locally still fails here, which is the point:
+# the commit is what other agents pull from the canonical graph.
+#
+# The checkout shares the repo's target/ directory, so cargo reuses the dependency
+# build cache and the whole gate stays a couple of seconds warm.
+#
+# Bypass with `git commit --no-verify` when you genuinely need to.
+
+set -uo pipefail
+
+repo_root=$(git rev-parse --show-toplevel) || exit 1
+staged=$(mktemp -d) || exit 1
+trap 'rm -rf "$staged"' EXIT
+
+# A snapshot of the index: tracked files only, exec bits preserved, no .git.
+git checkout-index -a -f --prefix="$staged/" || {
+  echo "pre-commit: could not materialise the staged tree" >&2
+  exit 1
+}
+
+failed=()
+
+run() { # label, command...
+  local label=$1
+  shift
+  local out
+  if out=$("$@" 2>&1); then
+    printf '  ok   %s\n' "$label"
+  else
+    printf '  FAIL %s\n' "$label"
+    printf '%s\n' "$out" | sed 's/^/       /'
+    failed+=("$label")
+  fi
+}
+
+echo "pre-commit: checking the staged tree"
+
+cd "$staged" || exit 1
+export CARGO_TARGET_DIR="$repo_root/target"
+
+if command -v cargo >/dev/null 2>&1; then
+  run "rustfmt"       cargo fmt --all --check
+  run "clippy"        cargo clippy --all-targets --quiet -- -D warnings
+  run "cargo test"    cargo test --quiet
+else
+  echo "  SKIP cargo checks (cargo not on PATH)"
+fi
+
+# The plugin's PreToolUse guard is pure bash, so it is cheap to pin on every commit.
+run "hook guard cases" bash scripts/test-plugin-hooks.sh
+
+# The .claude and .github skills are generated from the plugin copy; drift here
+# means an agent silently reads a stale loop.
+run "agent skill sync" bash scripts/sync-agent-skill.sh --check
+
+if [ ${#failed[@]} -ne 0 ]; then
+  printf '\npre-commit: %d check(s) failed: %s\n' "${#failed[@]}" "${failed[*]}" >&2
+  printf 'commit aborted. re-run after fixing, or bypass with --no-verify.\n' >&2
+  exit 1
+fi
+
+echo "pre-commit: all checks passed"
