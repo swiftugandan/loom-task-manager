@@ -1,0 +1,10 @@
+id = "8b884470d6"
+goal = "'loom doctor' reports when knowledge/ holds only the placeholder README, surfacing an institutional-memory directory that nothing feeds"
+state = "open"
+value = 1.0
+deps = []
+contract = []
+accept = []
+context = ["src/commands.rs"]
+tier_initial = 0
+created = "2026-07-29T13:59:33.386276Z"

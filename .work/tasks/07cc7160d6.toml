@@ -1,0 +1,14 @@
+id = "07cc7160d6"
+goal = "'loom retro' emits knowledge-file candidates alongside its policy suggestions, giving the learning loop a write half into knowledge/"
+state = "open"
+value = 3.0
+deps = []
+contract = []
+accept = []
+context = [
+    "src/protocol.rs",
+    "src/commands.rs",
+    "knowledge/README.md",
+]
+tier_initial = 0
+created = "2026-07-29T13:59:33.366567Z"
