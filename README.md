@@ -200,6 +200,20 @@ All fleet-mutable state lives under `refs/loom/` on the remote, with payloads as
 
 Task identity, spec, and the two single-writer-under-lease mutations (probe output, the done flip) live in `.work/tasks/*.toml` instead, since those files are near-immutable and change under an exclusive lease.
 
+## Refining a task's spec
+
+`deps`, `goal`, `value`, and `contract` lock in at `task-create` and stay fixed for the task's life.
+Only `probe-done` and `done` write to an existing task file afterward, and each touches a narrow field (`accept`/`context`, and `state`) under the exclusive lease.
+This keeps a scheduling decision or a verdict bound to the spec it actually saw, even as other agents work the graph concurrently.
+
+Two paths follow from that:
+
+- **Deps, goal, and value.** Settle these before `task-create` runs — draft the decomposition as plain notes first, and treat `task-create` as the commit point.
+For a correction after creation, `loom dead <id> --reason "..."` and recreate under a fresh id.
+This is cheap before any lease or attempt exists, since there's no history yet to carry over.
+One thing to watch: a derived state only clears a dep once it reaches `done`, not `dead`, so recreate any task whose `--dep` already points at the old id too.
+- **Acceptance criteria.** `probe-done <id> --accept <path>... [--context <path>...]` carries no lease or state check, so it's a genuine do-over — call it again whenever the test surface needs tightening.
+
 ## Development
 
 ```sh
