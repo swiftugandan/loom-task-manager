@@ -22,13 +22,23 @@ loom answers each of these structurally, not by convention:
 
 ## Install
 
-Requires Rust 1.75+.
+Requires Rust 1.75+. Not published to crates.io — install straight from this repo.
+
+Directly from GitHub, no clone needed:
 
 ```sh
+cargo install --git https://github.com/swiftugandan/loom-task-manager
+```
+
+Or from a local clone:
+
+```sh
+git clone https://github.com/swiftugandan/loom-task-manager
+cd loom-task-manager
 cargo install --path .
 ```
 
-This builds the `loom` binary from `src/main.rs`.
+Either way this builds the `loom` binary from `src/main.rs` and installs it to `~/.cargo/bin` (make sure it's on `PATH`).
 
 ## Quickstart
 
