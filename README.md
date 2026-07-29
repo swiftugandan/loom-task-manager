@@ -87,14 +87,14 @@ loom escalate --question "..." --option a --option b --recommend a \
 
 loom is meant to be driven by coding agents, not typed by hand. The loop is the same regardless of which agent runs it: `next` → `lease` → `heartbeat --daemon` → do the work → `attempt` (on failure) or `verify` + `done` (on success), reacting to exit codes 2/3/4/5 instead of retrying blindly. Give each agent a distinct `LOOM_AGENT` identity — without it, every agent collapses onto `git config user.email` and the independent-verdict gate can't tell them apart.
 
-This repo ships that loop as an [Agent Skill](https://github.blog/changelog/2025-12-18-github-copilot-now-supports-agent-skills/) — a `SKILL.md` describing when to use loom and how to react to each exit code, in the open format shared by Claude Code and GitHub Copilot. The same file lives at both discovery paths so either tool picks it up automatically in this repo:
+This repo ships that loop as an [Agent Skill](https://github.blog/changelog/2025-12-18-github-copilot-now-supports-agent-skills/) - a `SKILL.md` describing when to use loom and how to react to each exit code, in the open format shared by Claude Code and GitHub Copilot.
 
-- [`.claude/skills/loom/SKILL.md`](.claude/skills/loom/SKILL.md) — Claude Code
-- [`.github/skills/loom/SKILL.md`](.github/skills/loom/SKILL.md) — GitHub Copilot (VS Code/JetBrains agent mode, Copilot CLI, and the cloud coding agent)
+The canonical copy lives inside the plugin, at [`plugins/loom-task-manager/skills/loom/SKILL.md`](plugins/loom-task-manager/skills/loom/SKILL.md).
+`scripts/sync-agent-skill.sh` mirrors it to [`.github/skills/loom/SKILL.md`](.github/skills/loom/SKILL.md), the path GitHub Copilot discovers in this repo (VS Code/JetBrains agent mode, Copilot CLI, and the cloud coding agent).
+Edit the canonical copy and regenerate rather than editing the mirror.
 
-Both are generated from [`plugins/loom-task-manager/skills/loom/SKILL.md`](plugins/loom-task-manager/skills/loom/SKILL.md) by `scripts/sync-agent-skill.sh`; edit the canonical copy and regenerate rather than editing a mirror.
-
-To use loom in another project with Copilot, copy the file to `.github/skills/loom/SKILL.md` there, or to `~/.copilot/skills/loom/SKILL.md` to make it available across every repo. For Claude Code, install the plugin below instead of copying anything.
+To use loom in another project with Copilot, copy the file to `.github/skills/loom/SKILL.md` there, or to `~/.copilot/skills/loom/SKILL.md` to make it available across every repo.
+Claude Code reads the canonical copy straight from the installed plugin below, in this repo and every other one, so it needs no copying.
 
 ### Claude Code plugin
 

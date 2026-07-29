@@ -55,8 +55,8 @@ fi
 # The plugin's PreToolUse guard is pure bash, so it is cheap to pin on every commit.
 run "hook guard cases" bash scripts/test-plugin-hooks.sh
 
-# The .claude and .github skills are generated from the plugin copy; drift here
-# means an agent silently reads a stale loop.
+# The .github skill is generated from the plugin copy; drift here means Copilot
+# silently reads a stale loop.
 run "agent skill sync" bash scripts/sync-agent-skill.sh --check
 
 if [ ${#failed[@]} -ne 0 ]; then

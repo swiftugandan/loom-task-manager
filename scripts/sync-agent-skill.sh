@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 #
-# The loom work-loop skill ships to three discovery paths:
+# The loom work-loop skill ships to two discovery paths:
 #
 #   plugins/loom-task-manager/skills/loom/SKILL.md   canonical - the Claude Code plugin
-#   .claude/skills/loom/SKILL.md                     Claude Code, working in this repo
 #   .github/skills/loom/SKILL.md                     GitHub Copilot, working in this repo
 #
-# The plugin copy is the source of truth. This script regenerates the other two,
-# or verifies they match with --check (use that in CI and pre-commit).
+# The plugin copy is the source of truth. Claude Code reads it through the
+# installed plugin, in this repo and every other one, so it needs no mirror here.
+# This script regenerates the Copilot mirror, or verifies it matches with --check
+# (use that in CI and pre-commit).
 
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 canonical="$repo_root/plugins/loom-task-manager/skills/loom/SKILL.md"
 targets=(
-  "$repo_root/.claude/skills/loom/SKILL.md"
   "$repo_root/.github/skills/loom/SKILL.md"
 )
 

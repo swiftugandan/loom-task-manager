@@ -39,16 +39,15 @@ The cases are pinned in [`scripts/test-plugin-hooks.sh`](../../scripts/test-plug
 
 ## Development
 
-The work-loop skill is published to three discovery paths, with this plugin as the source of truth:
+The work-loop skill is published to two discovery paths, with this plugin as the source of truth:
 
-- `plugins/loom-task-manager/skills/loom/SKILL.md` - canonical
-- `.claude/skills/loom/SKILL.md` - Claude Code working in the loom repo itself
+- `plugins/loom-task-manager/skills/loom/SKILL.md` - canonical, and what Claude Code loads through the installed plugin
 - `.github/skills/loom/SKILL.md` - GitHub Copilot working in the loom repo itself
 
 Edit the canonical copy, then regenerate and verify:
 
 ```sh
-scripts/sync-agent-skill.sh          # regenerate the two mirrors
+scripts/sync-agent-skill.sh          # regenerate the Copilot mirror
 scripts/sync-agent-skill.sh --check  # verify they match, for CI
 scripts/test-plugin-hooks.sh         # exercise the PreToolUse guard
 claude plugin validate ./plugins/loom-task-manager --strict
