@@ -1,6 +1,6 @@
 id = "8b742f08cf"
 goal = "README documents every shipped loom command, exit code, environment variable, and policy field, with no stale or missing entries against the 2.0.0 source"
-state = "open"
+state = "done"
 value = 3.0
 deps = []
 contract = []
