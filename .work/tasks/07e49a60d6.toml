@@ -1,6 +1,6 @@
 id = "07e49a60d6"
 goal = "'loom context <id>' includes an index of knowledge/ in every hydration manifest, so institutional memory reaches agents without per-task opt-in"
-state = "open"
+state = "done"
 value = 2.0
 deps = []
 contract = []
