@@ -1,6 +1,6 @@
 id = "8b884470d6"
 goal = "'loom doctor' reports when knowledge/ holds only the placeholder README, surfacing an institutional-memory directory that nothing feeds"
-state = "open"
+state = "done"
 value = 1.0
 deps = []
 contract = []
