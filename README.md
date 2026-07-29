@@ -51,6 +51,9 @@ loom doctor                     # sanity-checks repo, remote, graph, and policy
 
 loom task-create --goal "add rate limiting to the API" --value 3
 # -> {"id": "...", "needs_probe": true}
+git add .work && git commit -m "task: add rate limiting" && git push
+# task-create only writes .work/tasks/ locally — until this is pushed,
+# `loom next`/`tasks` (which read origin/main, not the worktree) won't see it
 
 loom next                       # best schedulable task by score
 loom lease <id>                 # atomic CAS acquire; exit 3 if another agent won the race
@@ -58,10 +61,12 @@ loom heartbeat <id> --daemon    # background heartbeat; self-stops at the tier b
 
 # task has no acceptance tests yet: probe first
 loom probe-done <id> --accept tests/accept/<id>.rs
+git add tests .work && git commit -m "probe: <id>" && git push
 
 # ... do the work ...
 loom verify <id> --approve      # a different agent publishes a verdict bound to HEAD
 loom done <id>                  # gated, atomic: verify → flip state=done → commit
+git push                        # done commits locally only — push so the fleet sees it
 ```
 
 If an attempt fails:

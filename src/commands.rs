@@ -209,6 +209,10 @@ pub fn task_create(
         "{}",
         json!({"id": task.id, "needs_probe": task.accept.is_empty()})
     );
+    eprintln!(
+        "loom: '{}' created (commit and push .work/tasks/ so the canonical graph — and `loom next` — sees it)",
+        task.id
+    );
     Ok(())
 }
 
@@ -481,7 +485,9 @@ pub fn done(ctx: &Ctx, id: &str, message: Option<String>) -> Result<()> {
         });
     }
     let _ = git.release_lease(id, &ctx.agent(), false);
-    eprintln!("loom: '{id}' done — state flip and implementation committed atomically");
+    eprintln!(
+        "loom: '{id}' done — state flip and implementation committed atomically (git push so the canonical graph sees it)"
+    );
     Ok(())
 }
 
@@ -820,6 +826,15 @@ mod tests {
     use super::*;
     use crate::runner::mock::{MockRunner, Step};
 
+    // Tests below mutate the process-wide LOOM_AGENT env var, which races
+    // under cargo test's default parallel execution. Serialize them.
+    static LOOM_AGENT_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn lock_agent_env() -> std::sync::MutexGuard<'static, ()> {
+        LOOM_AGENT_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
     fn workspace() -> (tempfile::TempDir, Workspace) {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join(".work/tasks")).unwrap();
@@ -846,6 +861,7 @@ mod tests {
 
     #[test]
     fn done_is_gated_atomic_and_rolls_back_on_commit_failure() {
+        let _guard = lock_agent_env();
         std::env::set_var("LOOM_AGENT", "impl-agent");
         let (_tmp, ws) = workspace();
         seed(&ws, "abc", true);
@@ -952,6 +968,7 @@ mod tests {
 
     #[test]
     fn attempt_records_ref_and_exit2_at_ladder_end() {
+        let _guard = lock_agent_env();
         std::env::set_var("LOOM_AGENT", "a");
         let (_tmp, ws) = workspace();
         seed(&ws, "abc", true);
@@ -982,6 +999,7 @@ mod tests {
 
     #[test]
     fn canonical_graph_is_used_when_remote_main_exists() {
+        let _guard = lock_agent_env();
         std::env::set_var("LOOM_AGENT", "a");
         let (_tmp, ws) = workspace();
         // Worktree has a DIFFERENT (mutated) copy — must be ignored.
@@ -1014,6 +1032,7 @@ mod tests {
 
     #[test]
     fn escalation_deadline_defaults_still_apply() {
+        let _guard = lock_agent_env();
         std::env::set_var("LOOM_AGENT", "a");
         let (_tmp, ws) = workspace();
         ws.save_escalation(&Escalation {
