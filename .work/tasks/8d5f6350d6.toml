@@ -1,6 +1,6 @@
 id = "8d5f6350d6"
 goal = "The loom skill directs agents to record durable facts as knowledge/<topic>.md before 'loom done' and to pass those files via --context on related tasks, so lessons survive beyond one task's attempt refs"
-state = "open"
+state = "done"
 value = 3.0
 deps = []
 contract = []
