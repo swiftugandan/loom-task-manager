@@ -1,0 +1,160 @@
+# loom
+
+Agent-native task management on a git substrate.
+
+loom coordinates a fleet of coding agents working against a shared task graph, using nothing but a git remote as the coordination medium.
+There is no server and no database.
+Every piece of mutable fleet state — leases, attempts, verdicts, telemetry — lives in git refs, so concurrent agents can never merge-conflict each other's coordination data.
+
+## Why
+
+Running several autonomous agents against the same repo raises a few hard problems: who owns a task right now, what happens when an agent goes silent mid-task, how much budget an agent gets before it must stop and escalate, and how a "done" claim gets verified without trusting the agent that made it.
+loom answers each of these structurally, not by convention:
+
+- **Canonical graph.** Cross-agent decisions (scheduling, dependency resolution) read the task graph from `<remote>/main`, never a possibly-mutated local worktree.
+- **CAS leases.** Acquiring a task is an atomic compare-and-swap against a git ref (`git push --force-with-lease`), so two agents can race for the same task and exactly one wins.
+- **Conflict-free attempts.** Every attempt is its own uniquely-named ref (`refs/loom/attempt/<task>/<id>`), so fleet activity never produces a merge conflict in `.work/`.
+- **Derived tiers, not stored ones.** A task's current budget tier is `initial tier + failed attempts`, capped by the policy's tier ladder. There's no mutable tier field to drift out of sync.
+- **Structural timeboxes.** `loom heartbeat --daemon` detaches a background heartbeater that stops itself once the tier budget elapses — the timebox is enforced by the system, not by agent discipline.
+- **Independent-verdict done gate.** `loom done` is gated on an approving verdict bound to the exact candidate sha, from an agent other than the implementer (configurable). The state flip and the code/test commit happen atomically; if the commit fails, the state flip is rolled back.
+- **Typed human-oracle escalation.** Agents that hit a genuine judgment call file a typed question with options, a recommendation, and (optionally) a deadline default, instead of guessing or stalling silently.
+- **Retro loop.** `loom retro` reads back telemetry and attempt history and emits mechanical policy suggestions — the read half of a learning loop that's meant to change `.work/policy.toml`, not just print numbers.
+
+## Install
+
+Requires Rust 1.75+.
+
+```sh
+cargo install --path .
+```
+
+This builds the `loom` binary from `src/main.rs`.
+
+## Quickstart
+
+```sh
+# In a git repo with a remote:
+loom init                       # creates .work/{tasks,escalations,policy.toml} and knowledge/
+git add .work knowledge && git commit -m "loom: init" && git push
+
+loom doctor                     # sanity-checks repo, remote, graph, and policy
+
+loom task-create --goal "add rate limiting to the API" --value 3
+# -> {"id": "...", "needs_probe": true}
+
+loom next                       # best schedulable task by score
+loom lease <id>                 # atomic CAS acquire; exit 3 if another agent won the race
+loom heartbeat <id> --daemon    # background heartbeat; self-stops at the tier budget
+
+# task has no acceptance tests yet: probe first
+loom probe-done <id> --accept tests/accept/<id>.rs
+
+# ... do the work ...
+loom verify <id> --approve      # a different agent publishes a verdict bound to HEAD
+loom done <id>                  # gated, atomic: verify → flip state=done → commit
+```
+
+If an attempt fails:
+
+```sh
+loom attempt <id> --sha <candidate-sha> --outcome tests-red --lesson "..."
+# tier escalates by derivation; exits 2 once the ladder is exhausted
+```
+
+If an agent needs a human call:
+
+```sh
+loom escalate --question "..." --option a --option b --recommend a \
+  --blocking <id> --deadline 2026-08-01T00:00:00Z --default a
+```
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `init` | Initialize `.work/` (tasks, escalations, policy) and `knowledge/` |
+| `doctor` | Verify git repo, remote, canonical graph, dep integrity, and policy |
+| `task-create` | Create a task file in `.work/tasks/` (prints its id) |
+| `tasks` | List all tasks with derived state and derived tier |
+| `show <id>` | Show one task: derived state/tier, attempts with lessons, unblock count |
+| `next` | Print the best schedulable task (or all candidates with `--all`) |
+| `lease <id>` | Acquire the exclusive work lease |
+| `heartbeat <id>` | Heartbeat the lease; `--daemon` detaches a self-stopping background heartbeater |
+| `status <id>` | Lease clock: elapsed vs. budget, remaining minutes, current verdict |
+| `release <id>` | Release the lease without finishing (work stays on the branch) |
+| `probe-done <id>` | Record a probe's output: acceptance tests + tightened context manifest |
+| `attempt <id>` | Record a failed attempt as a conflict-free ref |
+| `verify <id>` | Publish a verdict for the candidate at HEAD (or `--sha`) |
+| `done <id>` | Gate + flip `state=done` + commit code, tests, and state atomically |
+| `dead <id>` | Mark a task dead with a reason |
+| `escalate` | File a typed question for the human oracle |
+| `escalations` | List escalations; `--apply-defaults` answers past-deadline ones |
+| `sweep` | Reclaim stale leases |
+| `lock acquire` / `lock release` | Take/release the integration serialization lock |
+| `telemetry <commit>` | Append a structured telemetry record (git note) to a commit |
+| `retro` | Aggregate telemetry + attempt history into a report with policy suggestions |
+| `context <id>` | Print a task's hydration manifest (context files with existence/size) |
+
+Run `loom <command> --help` for full flag details.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Error (protocol violation, git failure, bad input) |
+| 2 | Budget tier exhausted — decompose or escalate; grinding is not an option |
+| 3 | Lease race lost — pick another task |
+| 4 | Blocked on the human oracle (open escalation with no default) |
+| 5 | Verification gate — no valid independent verdict for this candidate |
+
+## Environment
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `LOOM_AGENT` | Agent identity for leases/verdicts/telemetry | `git config user.email` |
+| `LOOM_REMOTE` | Git remote for coordination refs | `origin` |
+| `LOOM_MAIN` | Canonical branch the graph is read from | `main` |
+
+## Policy
+
+`.work/policy.toml` controls budgets, lease TTLs, scheduling, and the verification gate:
+
+```toml
+[budget]
+tiers_minutes = [10, 45, 180]
+
+[lease]
+ttl_minutes = 15
+heartbeat_minutes = 5
+
+[schedule]
+staleness_half_life_hours = 72.0
+
+[verify]
+mode = "independent"  # "independent" | "any" | "off"
+```
+
+`verify.mode`:
+- `independent` — an approving verdict from a different agent, bound to the exact candidate sha, is required. This is the default: review discipline is structural, not instructional.
+- `any` — a verdict is required but self-verdicts are allowed (recorded as such for audit).
+- `off` — no verdict gate (tests-green is still required).
+
+## How coordination works
+
+All fleet-mutable state lives under `refs/loom/` on the remote, with payloads as JSON in commit messages over the empty tree:
+
+- `refs/loom/lease/<task>` — the exclusive work lease, created/updated/deleted via `git push --force-with-lease` (a server-side compare-and-swap).
+- `refs/loom/attempt/<task>/<id>` — one ref per attempt, uniquely named, append-only, and therefore conflict-free by construction.
+- `refs/loom/verdict/<task>` — the latest verdict, bound to the candidate sha it approves.
+- `refs/loom/merge-lock` — the integration serialization lock.
+- `refs/notes/loom-telemetry` — structured telemetry as git notes.
+
+Task identity, spec, and the two single-writer-under-lease mutations (probe output, the done flip) live in `.work/tasks/*.toml` instead, since those files are near-immutable and change under an exclusive lease.
+
+## Development
+
+```sh
+cargo build
+cargo test
+```
