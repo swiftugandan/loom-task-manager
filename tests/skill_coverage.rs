@@ -53,7 +53,7 @@ fn section(doc: &str, heading: &str) -> String {
 /// Sentences mentioning the knowledge directory, so an assertion can ask what a
 /// single instruction says rather than what the whole document happens to contain.
 fn sentences_naming(text: &str, needle: &str) -> Vec<String> {
-    text.split(|c| c == '.' || c == '\n')
+    text.split(['.', '\n'])
         .filter(|s| s.contains(needle))
         .map(str::to_string)
         .collect()
@@ -66,9 +66,9 @@ fn skill_loop_directs_writing_knowledge_files_before_done() {
     let skill = read(CANONICAL_SKILL);
     let the_loop = section(&skill, "The loop");
 
-    let mention = the_loop.find(&path_form).unwrap_or_else(|| {
-        panic!("`## The loop` never tells the agent to write into {path_form}")
-    });
+    let mention = the_loop
+        .find(&path_form)
+        .unwrap_or_else(|| panic!("`## The loop` never tells the agent to write into {path_form}"));
     let close_out = the_loop
         .find("loom done")
         .expect("`## The loop` closes out with `loom done`");
