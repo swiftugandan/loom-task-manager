@@ -156,6 +156,9 @@ pub fn doctor(ctx: &Ctx) -> Result<()> {
             dangling.join(", ")
         )));
     }
+    if let Some(note) = knowledge_note(ctx) {
+        eprintln!("{note}");
+    }
     println!(
         "ok: root={} graph={} tasks={} tiers={:?} lease_ttl={}m verify={} agent={}",
         ctx.ws.root.display(),
@@ -795,6 +798,30 @@ fn existing_knowledge(ctx: &Ctx) -> Vec<String> {
         .collect();
     out.sort();
     out
+}
+
+/// `loom doctor`'s read of institutional memory: `Some(note)` while
+/// `knowledge/` carries nothing but the placeholder README `loom init` wrote,
+/// `None` once a topic file lands there.
+///
+/// A directory that exists and parses is invisible to every other check, so
+/// this is the one place a fleet learns its memory has stayed empty. The note
+/// distinguishes an absent directory from a placeholder-only one, since the
+/// two ask for different fixes.
+fn knowledge_note(ctx: &Ctx) -> Option<String> {
+    let files = existing_knowledge(ctx);
+    let placeholder = format!("{KNOWLEDGE_DIR}/README.md");
+    if files.iter().any(|f| f != &placeholder) {
+        return None;
+    }
+    let state = if files.is_empty() {
+        "is empty"
+    } else {
+        "holds only the placeholder README"
+    };
+    Some(format!(
+        "loom: {KNOWLEDGE_DIR}/ {state} — an institutional memory that nothing feeds. Write durable facts as {KNOWLEDGE_DIR}/<topic>.md before `loom done` so lessons outlive the attempt refs that carry them"
+    ))
 }
 
 /// Both halves of the learning loop: aggregate telemetry + attempts, emit a

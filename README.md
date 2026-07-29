@@ -47,7 +47,7 @@ Either way this builds the `loom` binary from `src/main.rs` and installs it to `
 loom init                       # creates .work/{tasks,escalations,policy.toml} and knowledge/
 git add .work knowledge && git commit -m "loom: init" && git push
 
-loom doctor                     # sanity-checks repo, remote, graph, and policy
+loom doctor                     # sanity-checks repo, remote, graph, policy, and knowledge/
 
 loom task-create --goal "add rate limiting to the API" --value 3
 # -> {"id": "...", "needs_probe": true}
@@ -121,7 +121,7 @@ The last two are the point. `verify.mode = independent` needs a reviewer that is
 | Command | Purpose |
 |---|---|
 | `init` | Initialize `.work/` (tasks, escalations, policy) and `knowledge/` |
-| `doctor` | Verify git repo, remote, canonical graph, dep integrity, and policy |
+| `doctor` | Verify git repo, remote, canonical graph, dep integrity, policy, and `knowledge/` health |
 | `task-create` | Create a task file in `.work/tasks/` (prints its id) |
 | `tasks` | List all tasks with derived state and derived tier |
 | `show <id>` | Show one task: derived state/tier, attempts with lessons, unblock count |

@@ -45,7 +45,7 @@ struct Cli {
 enum Cmd {
     /// Initialize .work/ (tasks, escalations, policy) and knowledge/ here
     Init,
-    /// Verify git repo, remote, canonical graph, dep integrity, and policy
+    /// Verify git repo, remote, canonical graph, dep integrity, policy, knowledge/
     Doctor,
     /// Create a task file in .work/tasks/ (prints its id)
     TaskCreate {
