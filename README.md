@@ -141,7 +141,7 @@ The last two are the point. `verify.mode = independent` needs a reviewer that is
 | `lock acquire` / `lock release` | Take/release the integration serialization lock |
 | `telemetry <commit>` | Append a structured telemetry record (git note) to a commit |
 | `retro` | Aggregate telemetry + attempt history into a report with policy suggestions and `knowledge/` file candidates |
-| `context <id>` | Print a task's hydration manifest (context files with existence/size) |
+| `context <id>` | Print a task's hydration manifest (context files with existence/size, plus a standing `knowledge/` index) |
 
 Run `loom <command> --help` for full flag details.
 

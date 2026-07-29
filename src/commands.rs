@@ -821,7 +821,12 @@ pub fn retro(ctx: &Ctx) -> Result<()> {
 
 // -------------------------------------------------------------- context
 
-pub fn context(ctx: &Ctx, id: &str) -> Result<()> {
+/// The hydration manifest for one task: what to read, and nothing more.
+///
+/// `context` is what the task cited; `knowledge` is the standing index of
+/// `knowledge/`, added unconditionally so institutional memory reaches every
+/// agent whether or not the task's author thought to cite it.
+pub fn context_manifest(ctx: &Ctx, id: &str) -> Result<Value> {
     let t = ctx.ws.load_task(id).or_else(|_| {
         let (tasks, _) = ctx.canonical_tasks()?;
         tasks
@@ -836,19 +841,36 @@ pub fn context(ctx: &Ctx, id: &str) -> Result<()> {
             if let Some(rest) = entry.strip_prefix("git:") {
                 json!({"ref": rest, "kind": "git", "hint": "git show / git diff"})
             } else {
-                let p = ctx.ws.root.join(entry);
-                json!({"path": entry, "kind": "file", "exists": p.exists(),
-                       "bytes": p.metadata().map(|m| m.len()).unwrap_or(0)})
+                json!(file_row(ctx, entry))
             }
         })
         .collect();
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&json!({
-            "id": t.id, "goal": t.goal, "contract": t.contract,
-            "accept": t.accept, "context": rows,
-        }))?
-    );
+    let knowledge: Vec<_> = existing_knowledge(ctx)
+        .iter()
+        .map(|entry| file_row(ctx, entry))
+        .collect();
+    Ok(json!({
+        "id": t.id, "goal": t.goal, "contract": t.contract,
+        "accept": t.accept, "context": rows, "knowledge": knowledge,
+    }))
+}
+
+/// One manifest row for a repo-relative path, sized from disk.
+fn file_row(ctx: &Ctx, entry: &str) -> Value {
+    let p = ctx.ws.root.join(entry);
+    json!({"path": entry, "kind": "file", "exists": p.exists(),
+           "bytes": p.metadata().map(|m| m.len()).unwrap_or(0)})
+}
+
+pub fn context(ctx: &Ctx, id: &str) -> Result<()> {
+    let manifest = context_manifest(ctx, id)?;
+    let count = manifest["knowledge"].as_array().map_or(0, Vec::len);
+    println!("{}", serde_json::to_string_pretty(&manifest)?);
+    if count > 0 {
+        eprintln!(
+            "loom: {count} file(s) under {KNOWLEDGE_DIR}/ carry what earlier attempts learned — read them before repeating their mistakes"
+        );
+    }
     Ok(())
 }
 
