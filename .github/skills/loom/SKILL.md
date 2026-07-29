@@ -32,7 +32,7 @@ Set `LOOM_AGENT` to a stable identity for this session before running anything (
    Write these files before `loom done`, since its `git add -A` sweeps them into the same atomic commit as the implementation.
    `loom retro` proposes them mechanically under `knowledge_candidates`, each with a path, its source lessons, and whether that file already exists.
 10. **Close it out.** `loom done <id>` gates on that verdict, flips `state=done`, and commits the state flip with the implementation atomically — then `git push`. The commit is local-only; until it's pushed, the task still shows as its prior derived state (e.g. `parked`) to everyone reading the canonical graph.
-   - Exit 5 (verification gate): no valid independent verdict bound to HEAD yet — get one before retrying.
+    - Exit 5 (verification gate): no valid independent verdict bound to HEAD yet — get one before retrying.
 
 ## When to escalate instead of guessing
 
