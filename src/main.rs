@@ -170,8 +170,8 @@ enum Cmd {
         #[arg(long)]
         json: String,
     },
-    /// Read the telemetry + attempt history and emit a report with mechanical
-    /// policy suggestions — the read half of the learning loop
+    /// Read the telemetry + attempt history and emit a report: mechanical
+    /// policy suggestions plus knowledge/ file candidates
     Retro,
     /// Print a task's hydration manifest (context files with existence/size)
     Context { id: String },

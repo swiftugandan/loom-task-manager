@@ -212,8 +212,9 @@ pub fn verify_gate(
 
 // ---------------------------------------------------------------- retro
 
-/// Aggregate telemetry + attempts into a report and mechanical policy
-/// suggestions. The read half of the learning loop.
+/// Aggregate telemetry + attempts into a report: mechanical policy suggestions
+/// that change `.work/policy.toml`, and knowledge-file candidates that become
+/// files under `knowledge/`. Both halves of the learning loop.
 pub fn retro(
     telemetry: &[Value],
     attempts: &BTreeMap<String, Vec<AttemptRecord>>,
@@ -302,8 +303,8 @@ fn knowledge_candidates(
     attempts: &BTreeMap<String, Vec<AttemptRecord>>,
     existing_knowledge: &[String],
 ) -> Vec<Value> {
-    // Grouping key → (display topic, task ids, verbatim lessons). BTreeMap over
-    // tasks keeps first-seen order deterministic.
+    // Grouping key → evidence. BTreeMap over tasks keeps first-seen order
+    // deterministic.
     let mut by_lesson: BTreeMap<String, Group> = BTreeMap::new();
     let mut by_outcome: BTreeMap<String, Group> = BTreeMap::new();
     for (task, records) in attempts {
@@ -312,46 +313,40 @@ fn knowledge_candidates(
             if !key.is_empty() {
                 by_lesson
                     .entry(key)
-                    .or_default()
+                    .or_insert_with(|| Group::new(Rule::Lesson))
                     .add(&r.lesson, task, &r.lesson);
             }
             by_outcome
                 .entry(r.outcome.clone())
-                .or_default()
+                .or_insert_with(|| Group::new(Rule::Outcome))
                 .add(&r.outcome, task, &r.lesson);
         }
     }
 
-    let mut out: Vec<Value> = Vec::new();
-    for g in by_lesson
+    // Keyed by the *final path*: a slug is lossy (case, punctuation, length), so
+    // two distinct groups can name the same file. One file, one candidate, all
+    // the evidence — otherwise a report proposes writing the same path twice and
+    // the second write clobbers the first.
+    let mut by_path: BTreeMap<String, Group> = BTreeMap::new();
+    let qualifying = by_lesson
         .values()
         .filter(|g| g.tasks.len() >= LESSON_TASKS_THRESHOLD)
-    {
-        let ids = g.tasks.join(", ");
-        out.push(g.to_value(
-            format!("{}/{}.md", KNOWLEDGE_DIR, slug(&g.topic)),
-            format!(
-                "the same lesson was recorded on {} tasks ({ids}): the fleet keeps re-learning it",
-                g.tasks.len()
-            ),
-            existing_knowledge,
-        ));
-    }
-    for (outcome, g) in by_outcome
-        .iter()
-        .filter(|(_, g)| g.tasks.len() >= OUTCOME_TASKS_THRESHOLD)
-    {
-        let ids = g.tasks.join(", ");
-        out.push(g.to_value(
-            format!("{}/attempt-{}.md", KNOWLEDGE_DIR, slug(outcome)),
-            format!(
-                "'{outcome}' ended attempts on {} tasks ({ids}): a recurring failure mode worth one written cause",
-                g.tasks.len()
-            ),
-            existing_knowledge,
-        ));
+        .chain(
+            by_outcome
+                .values()
+                .filter(|g| g.tasks.len() >= OUTCOME_TASKS_THRESHOLD),
+        );
+    for g in qualifying {
+        by_path
+            .entry(g.path())
+            .and_modify(|merged| merged.absorb(g))
+            .or_insert_with(|| g.clone());
     }
 
+    let mut out: Vec<Value> = by_path
+        .into_iter()
+        .map(|(path, g)| g.to_value(path, existing_knowledge))
+        .collect();
     // Widest evidence first; path breaks ties so the report is stable.
     out.sort_by(|a, b| {
         let n = |v: &Value| v["tasks"].as_array().map_or(0, Vec::len);
@@ -362,46 +357,109 @@ fn knowledge_candidates(
                 .cmp(b["path"].as_str().unwrap_or_default())
         })
     });
-    out.dedup_by(|a, b| a["path"] == b["path"]);
     out
 }
 
+/// Which rule earned a candidate its file — it decides the filename shape and
+/// how the candidate explains itself.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Rule {
+    Lesson,
+    Outcome,
+}
+
 /// Evidence accumulated for one candidate file.
-#[derive(Default)]
+#[derive(Debug, Clone)]
 struct Group {
-    topic: String,
+    rule: Rule,
+    /// Distinct headline texts: the lessons, or the outcomes, that named this
+    /// file. More than one means slugging collapsed them onto one path.
+    topics: Vec<String>,
     tasks: Vec<String>,
     lessons: Vec<String>,
 }
 
 impl Group {
-    fn add(&mut self, topic: &str, task: &str, lesson: &str) {
-        if self.topic.is_empty() {
-            self.topic = topic.to_string();
-        }
-        if !self.tasks.iter().any(|t| t == task) {
-            self.tasks.push(task.to_string());
-        }
-        if !lesson.is_empty() && !self.lessons.iter().any(|l| l == lesson) {
-            self.lessons.push(lesson.to_string());
+    fn new(rule: Rule) -> Self {
+        Self {
+            rule,
+            topics: Vec::new(),
+            tasks: Vec::new(),
+            lessons: Vec::new(),
         }
     }
 
-    fn to_value(&self, path: String, reason: String, existing_knowledge: &[String]) -> Value {
-        let exists = existing_knowledge.contains(&path);
-        let reason = if exists {
-            format!("{reason} — the file exists, so append")
-        } else {
-            reason
+    fn add(&mut self, topic: &str, task: &str, lesson: &str) {
+        push_distinct(&mut self.topics, topic);
+        push_distinct(&mut self.tasks, task);
+        if !lesson.is_empty() {
+            push_distinct(&mut self.lessons, lesson);
+        }
+    }
+
+    /// Fold another group that resolved to the same path into this one.
+    fn absorb(&mut self, other: &Group) {
+        for t in &other.topics {
+            push_distinct(&mut self.topics, t);
+        }
+        for t in &other.tasks {
+            push_distinct(&mut self.tasks, t);
+        }
+        for l in &other.lessons {
+            push_distinct(&mut self.lessons, l);
+        }
+    }
+
+    fn path(&self) -> String {
+        let stem = slug(self.topics.first().map_or("", String::as_str));
+        match self.rule {
+            Rule::Lesson => format!("{KNOWLEDGE_DIR}/{stem}.md"),
+            Rule::Outcome => format!("{KNOWLEDGE_DIR}/attempt-{stem}.md"),
+        }
+    }
+
+    fn reason(&self, exists: bool) -> String {
+        let n = self.tasks.len();
+        let ids = self.tasks.join(", ");
+        let mut reason = match (self.rule, self.topics.len()) {
+            (Rule::Lesson, 1) => format!(
+                "the same lesson was recorded on {n} tasks ({ids}): the fleet keeps re-learning it"
+            ),
+            (Rule::Lesson, k) => format!(
+                "{k} recurring lessons share this topic across {n} tasks ({ids}): the fleet keeps re-learning it"
+            ),
+            (Rule::Outcome, 1) => format!(
+                "'{}' ended attempts on {n} tasks ({ids}): a recurring failure mode worth one written cause",
+                self.topics.first().map_or("", String::as_str)
+            ),
+            (Rule::Outcome, _) => format!(
+                "outcomes {} ended attempts on {n} tasks ({ids}): a recurring failure mode worth one written cause",
+                self.topics.join(", ")
+            ),
         };
+        if exists {
+            reason.push_str(" — the file exists, so append");
+        }
+        reason
+    }
+
+    fn to_value(&self, path: String, existing_knowledge: &[String]) -> Value {
+        let exists = existing_knowledge.contains(&path);
         json!({
             "path": path,
-            "topic": self.topic,
-            "reason": reason,
+            "topic": self.topics.first().map_or("", String::as_str),
+            "topics": self.topics,
+            "reason": self.reason(exists),
             "tasks": self.tasks,
             "lessons": self.lessons,
             "exists": exists,
         })
+    }
+}
+
+fn push_distinct(out: &mut Vec<String>, value: &str) {
+    if !out.iter().any(|v| v == value) {
+        out.push(value.to_string());
     }
 }
 
@@ -727,6 +785,78 @@ mod tests {
         assert_eq!(by_outcome["exists"], json!(true));
         let lessons = by_outcome["lessons"].as_array().unwrap();
         assert_eq!(lessons.len(), 3, "the file carries its source lessons");
+    }
+
+    /// Slugs are lossy, so distinct lessons can name the same file. One path
+    /// must appear once, carrying every group's evidence — two entries for one
+    /// path is a report that tells an agent to clobber its own first write.
+    #[test]
+    fn retro_knowledge_candidates_are_one_per_path_even_when_slugs_collide() {
+        // Identical for the first 48 slug chars, different after it.
+        let alpha = "Always run the full test suite before committing the alpha branch";
+        let beta = "Always run the full test suite before committing the beta branch";
+        let unrelated = "Escalate ambiguous specs instead of guessing";
+
+        let mut attempts: BTreeMap<String, Vec<AttemptRecord>> = BTreeMap::new();
+        let mut add = |task: &str, lesson: &str, day: usize| {
+            attempts
+                .entry(task.into())
+                .or_default()
+                .push(attempt_lesson(
+                    task,
+                    "tests-red",
+                    lesson,
+                    &format!("2026-07-{:02}T00:00:00Z", day),
+                ));
+        };
+        // alpha on 4 tasks, unrelated on 3, beta on 2 — the counts straddle, so
+        // sorting by evidence width separates the colliding pair.
+        for (i, t) in ["a", "b", "c", "d"].iter().enumerate() {
+            add(t, alpha, i + 1);
+        }
+        for (i, t) in ["e", "f", "g"].iter().enumerate() {
+            add(t, unrelated, i + 1);
+        }
+        for (i, t) in ["h", "i"].iter().enumerate() {
+            add(t, beta, i + 1);
+        }
+
+        let report = retro(&[], &attempts, &Policy::default(), &[]);
+        let cands = report["knowledge_candidates"].as_array().unwrap();
+        let paths: Vec<&str> = cands.iter().map(|c| c["path"].as_str().unwrap()).collect();
+        let distinct: std::collections::BTreeSet<&&str> = paths.iter().collect();
+        assert_eq!(
+            paths.len(),
+            distinct.len(),
+            "every candidate names a distinct file, got {paths:?}"
+        );
+
+        // The lesson-rule candidate the two colliding slugs landed on — the
+        // outcome-rule file (`attempt-tests-red.md`) holds every lesson by
+        // construction, so it isn't evidence either way.
+        let collided = cands
+            .iter()
+            .find(|c| {
+                let p = c["path"].as_str().unwrap();
+                !p.starts_with("knowledge/attempt-")
+                    && c["lessons"]
+                        .as_array()
+                        .is_some_and(|ls| ls.iter().any(|l| l == alpha))
+            })
+            .unwrap_or_else(|| panic!("the colliding lessons still earn a file: {cands:?}"));
+        assert!(
+            collided["lessons"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|l| l == beta),
+            "a collapsed path keeps both lessons: {collided}"
+        );
+        assert_eq!(
+            collided["tasks"],
+            json!(["a", "b", "c", "d", "h", "i"]),
+            "and every task that produced them"
+        );
     }
 
     #[test]
