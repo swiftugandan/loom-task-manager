@@ -18,7 +18,7 @@ loom answers each of these structurally, not by convention:
 - **Structural timeboxes.** `loom heartbeat --daemon` detaches a background heartbeater that stops itself once the tier budget elapses — the timebox is enforced by the system, not by agent discipline.
 - **Independent-verdict done gate.** `loom done` is gated on an approving verdict bound to the exact candidate sha, from an agent other than the implementer (configurable). The state flip and the code/test commit happen atomically; if the commit fails, the state flip is rolled back.
 - **Typed human-oracle escalation.** Agents that hit a genuine judgment call file a typed question with options, a recommendation, and (optionally) a deadline default, instead of guessing or stalling silently.
-- **Retro loop.** `loom retro` reads back telemetry and attempt history and emits mechanical policy suggestions — the read half of a learning loop that's meant to change `.work/policy.toml`, not just print numbers.
+- **Retro loop.** `loom retro` reads back telemetry and attempt history and emits two mechanical outputs: policy suggestions meant to change `.work/policy.toml`, and knowledge candidates — lessons that recurred across distinct tasks, shaped into proposed `knowledge/<topic>.md` files with the source lessons attached. Config learns from the numbers; `knowledge/` learns from the lessons.
 
 ## Install
 
@@ -140,7 +140,7 @@ The last two are the point. `verify.mode = independent` needs a reviewer that is
 | `sweep` | Reclaim stale leases |
 | `lock acquire` / `lock release` | Take/release the integration serialization lock |
 | `telemetry <commit>` | Append a structured telemetry record (git note) to a commit |
-| `retro` | Aggregate telemetry + attempt history into a report with policy suggestions |
+| `retro` | Aggregate telemetry + attempt history into a report with policy suggestions and `knowledge/` file candidates |
 | `context <id>` | Print a task's hydration manifest (context files with existence/size) |
 
 Run `loom <command> --help` for full flag details.

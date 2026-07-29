@@ -8,7 +8,8 @@
 //! - Attempts are conflict-free refs, so concurrent fleet activity can never
 //!   merge-conflict `.work/`.
 //! - `heartbeat --daemon` makes the heartbeat/timebox discipline mechanical.
-//! - `retro` is the read half of the telemetry loop.
+//! - `retro` closes the telemetry loop: policy suggestions plus `knowledge/`
+//!   file candidates, so what the fleet learns lands in config and in memory.
 
 use std::collections::BTreeMap;
 
@@ -113,14 +114,14 @@ pub fn init(runner: &dyn Runner) -> Result<()> {
     let work = cwd.join(WORK_DIR);
     std::fs::create_dir_all(work.join("tasks"))?;
     std::fs::create_dir_all(work.join("escalations"))?;
-    std::fs::create_dir_all(cwd.join("knowledge"))?;
+    std::fs::create_dir_all(cwd.join(KNOWLEDGE_DIR))?;
     let policy_path = work.join("policy.toml");
     if !policy_path.exists() {
         let body = toml::to_string_pretty(&Policy::default())
             .map_err(|e| Error::Other(format!("serialize default policy: {e}")))?;
         std::fs::write(&policy_path, body)?;
     }
-    let keep = cwd.join("knowledge/README.md");
+    let keep = cwd.join(KNOWLEDGE_DIR).join("README.md");
     if !keep.exists() {
         std::fs::write(
             keep,
@@ -796,16 +797,25 @@ fn existing_knowledge(ctx: &Ctx) -> Vec<String> {
     out
 }
 
-/// The read half of the learning loop: aggregate telemetry + attempts,
-/// emit a report with mechanical policy suggestions.
+/// Both halves of the learning loop: aggregate telemetry + attempts, emit a
+/// report whose suggestions change `.work/policy.toml` and whose knowledge
+/// candidates become files under `knowledge/`.
 pub fn retro(ctx: &Ctx) -> Result<()> {
     let git = ctx.git();
     git.fetch_loom_refs()?;
     let records = git.telemetry_records()?;
     let attempts = git.attempts()?;
     let report = protocol::retro(&records, &attempts, &ctx.policy, &existing_knowledge(ctx));
+    let candidates = report["knowledge_candidates"]
+        .as_array()
+        .map_or(0, Vec::len);
     println!("{}", serde_json::to_string_pretty(&report)?);
     eprintln!("loom: apply accepted suggestions as a reviewed diff to .work/policy.toml — retros that don't change config didn't happen");
+    if candidates > 0 {
+        eprintln!(
+            "loom: write the {candidates} accepted knowledge candidate(s) into {KNOWLEDGE_DIR}/ and cite them via --context — a lesson only compounds once it leaves the attempt refs"
+        );
+    }
     Ok(())
 }
 

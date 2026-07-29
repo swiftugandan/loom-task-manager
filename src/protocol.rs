@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 
 use crate::error::{Error, Result};
-use crate::model::{AttemptRecord, LeasePayload, Policy, Task, TaskState, Verdict};
+use crate::model::{AttemptRecord, LeasePayload, Policy, Task, TaskState, Verdict, KNOWLEDGE_DIR};
 
 // ------------------------------------------------------------ derived state
 
@@ -220,7 +220,6 @@ pub fn retro(
     policy: &Policy,
     existing_knowledge: &[String],
 ) -> Value {
-    let _ = existing_knowledge;
     let merged: Vec<&Value> = telemetry
         .iter()
         .filter(|r| r.get("outcome").and_then(Value::as_str) == Some("merged"))
@@ -282,8 +281,165 @@ pub fn retro(
         "ladder_exhaustions": exhausted,
         "mean_review_cycles": (mean_review * 100.0).round() / 100.0,
         "suggestions": suggestions,
+        "knowledge_candidates": knowledge_candidates(attempts, existing_knowledge),
     })
 }
+
+/// A lesson recorded on this many distinct tasks is institutional, not incidental.
+const LESSON_TASKS_THRESHOLD: usize = 2;
+/// An outcome recurring across this many distinct tasks is a failure mode.
+const OUTCOME_TASKS_THRESHOLD: usize = 3;
+
+/// The write half of the learning loop: attempt lessons that recur across
+/// tasks, shaped into proposed `knowledge/<topic>.md` files.
+///
+/// Two mechanical rules, both keyed on recurrence across *distinct tasks* —
+/// one task repeating itself is a grind, several tasks repeating each other is
+/// a fact the fleet keeps paying to re-derive:
+/// - a lesson recorded on ≥2 tasks earns a file of its own;
+/// - an outcome recorded on ≥3 tasks earns a file holding its lessons.
+fn knowledge_candidates(
+    attempts: &BTreeMap<String, Vec<AttemptRecord>>,
+    existing_knowledge: &[String],
+) -> Vec<Value> {
+    // Grouping key → (display topic, task ids, verbatim lessons). BTreeMap over
+    // tasks keeps first-seen order deterministic.
+    let mut by_lesson: BTreeMap<String, Group> = BTreeMap::new();
+    let mut by_outcome: BTreeMap<String, Group> = BTreeMap::new();
+    for (task, records) in attempts {
+        for r in records {
+            let key = normalize(&r.lesson);
+            if !key.is_empty() {
+                by_lesson
+                    .entry(key)
+                    .or_default()
+                    .add(&r.lesson, task, &r.lesson);
+            }
+            by_outcome
+                .entry(r.outcome.clone())
+                .or_default()
+                .add(&r.outcome, task, &r.lesson);
+        }
+    }
+
+    let mut out: Vec<Value> = Vec::new();
+    for g in by_lesson
+        .values()
+        .filter(|g| g.tasks.len() >= LESSON_TASKS_THRESHOLD)
+    {
+        let ids = g.tasks.join(", ");
+        out.push(g.to_value(
+            format!("{}/{}.md", KNOWLEDGE_DIR, slug(&g.topic)),
+            format!(
+                "the same lesson was recorded on {} tasks ({ids}): the fleet keeps re-learning it",
+                g.tasks.len()
+            ),
+            existing_knowledge,
+        ));
+    }
+    for (outcome, g) in by_outcome
+        .iter()
+        .filter(|(_, g)| g.tasks.len() >= OUTCOME_TASKS_THRESHOLD)
+    {
+        let ids = g.tasks.join(", ");
+        out.push(g.to_value(
+            format!("{}/attempt-{}.md", KNOWLEDGE_DIR, slug(outcome)),
+            format!(
+                "'{outcome}' ended attempts on {} tasks ({ids}): a recurring failure mode worth one written cause",
+                g.tasks.len()
+            ),
+            existing_knowledge,
+        ));
+    }
+
+    // Widest evidence first; path breaks ties so the report is stable.
+    out.sort_by(|a, b| {
+        let n = |v: &Value| v["tasks"].as_array().map_or(0, Vec::len);
+        n(b).cmp(&n(a)).then_with(|| {
+            a["path"]
+                .as_str()
+                .unwrap_or_default()
+                .cmp(b["path"].as_str().unwrap_or_default())
+        })
+    });
+    out.dedup_by(|a, b| a["path"] == b["path"]);
+    out
+}
+
+/// Evidence accumulated for one candidate file.
+#[derive(Default)]
+struct Group {
+    topic: String,
+    tasks: Vec<String>,
+    lessons: Vec<String>,
+}
+
+impl Group {
+    fn add(&mut self, topic: &str, task: &str, lesson: &str) {
+        if self.topic.is_empty() {
+            self.topic = topic.to_string();
+        }
+        if !self.tasks.iter().any(|t| t == task) {
+            self.tasks.push(task.to_string());
+        }
+        if !lesson.is_empty() && !self.lessons.iter().any(|l| l == lesson) {
+            self.lessons.push(lesson.to_string());
+        }
+    }
+
+    fn to_value(&self, path: String, reason: String, existing_knowledge: &[String]) -> Value {
+        let exists = existing_knowledge.contains(&path);
+        let reason = if exists {
+            format!("{reason} — the file exists, so append")
+        } else {
+            reason
+        };
+        json!({
+            "path": path,
+            "topic": self.topic,
+            "reason": reason,
+            "tasks": self.tasks,
+            "lessons": self.lessons,
+            "exists": exists,
+        })
+    }
+}
+
+/// Grouping key for lesson text: case, surrounding punctuation, and whitespace
+/// runs are noise; the sentence is the fact.
+fn normalize(text: &str) -> String {
+    text.split_whitespace()
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A filename stem: lowercase alphanumerics, single dashes, bounded length.
+fn slug(text: &str) -> String {
+    let mut s = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            s.push(ch.to_ascii_lowercase());
+        } else if !s.ends_with('-') && !s.is_empty() {
+            s.push('-');
+        }
+        if s.len() >= SLUG_MAX {
+            break;
+        }
+    }
+    let s = s.trim_matches('-').to_string();
+    if s.is_empty() {
+        "untitled".into()
+    } else {
+        s
+    }
+}
+
+const SLUG_MAX: usize = 48;
 
 #[cfg(test)]
 mod tests {
@@ -504,11 +660,14 @@ mod tests {
         let repeated = cands
             .iter()
             .find(|c| {
-                c["lessons"]
-                    .as_array()
-                    .is_some_and(|ls| ls.iter().any(|l| l == "Push probe output before continuing."))
+                c["lessons"].as_array().is_some_and(|ls| {
+                    ls.iter()
+                        .any(|l| l == "Push probe output before continuing.")
+                })
             })
-            .unwrap_or_else(|| panic!("lesson learned on two tasks becomes a candidate: {cands:?}"));
+            .unwrap_or_else(|| {
+                panic!("lesson learned on two tasks becomes a candidate: {cands:?}")
+            });
 
         let path = repeated["path"].as_str().unwrap();
         assert!(
@@ -528,7 +687,10 @@ mod tests {
                 .is_some_and(|ls| ls.iter().any(|l| l == "a one-off detail nobody hits twice"))),
             "a lesson seen once isn't institutional memory yet: {cands:?}"
         );
-        assert!(report["suggestions"].is_array(), "policy half still emitted");
+        assert!(
+            report["suggestions"].is_array(),
+            "policy half still emitted"
+        );
     }
 
     /// An outcome that keeps recurring across distinct tasks earns a file too,
