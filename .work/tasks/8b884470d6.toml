@@ -4,7 +4,11 @@ state = "open"
 value = 1.0
 deps = []
 contract = []
-accept = []
-context = ["src/commands.rs"]
+accept = ["src/commands.rs"]
+context = [
+    "src/commands.rs",
+    "src/model.rs",
+    "knowledge/pre-commit-gate.md",
+]
 tier_initial = 0
 created = "2026-07-29T13:59:33.386276Z"

@@ -1148,6 +1148,72 @@ mod tests {
         r.assert_done();
     }
 
+    /// `loom doctor` names an institutional-memory directory that nothing
+    /// feeds: a `knowledge/` holding only the placeholder README reads as
+    /// healthy on disk, so the health check is the only thing that surfaces it.
+    #[test]
+    fn doctor_reports_knowledge_holding_only_the_placeholder_readme() {
+        let (tmp, ws) = workspace();
+        let kdir = tmp.path().join(KNOWLEDGE_DIR);
+        std::fs::create_dir_all(&kdir).unwrap();
+        std::fs::write(kdir.join("README.md"), "# knowledge/\n").unwrap();
+        let r = MockRunner::new(vec![]);
+        let ctx = Ctx {
+            runner: &r,
+            ws,
+            policy: Policy::default(),
+        };
+
+        let note = knowledge_note(&ctx).expect("placeholder-only knowledge/ is reported");
+        assert!(
+            note.contains(KNOWLEDGE_DIR),
+            "the note names the directory, got {note}"
+        );
+        assert!(
+            note.contains("README"),
+            "the note says the placeholder is all that is there, got {note}"
+        );
+        r.assert_done();
+    }
+
+    /// One topic file is a fed directory, so the check stays quiet — a warning
+    /// that fires on healthy repos trains agents to ignore `loom doctor`.
+    #[test]
+    fn doctor_is_quiet_once_knowledge_carries_a_topic_file() {
+        let (tmp, ws) = workspace();
+        let kdir = tmp.path().join(KNOWLEDGE_DIR);
+        std::fs::create_dir_all(&kdir).unwrap();
+        std::fs::write(kdir.join("README.md"), "# knowledge/\n").unwrap();
+        std::fs::write(kdir.join("pre-commit-gate.md"), "gate lesson").unwrap();
+        let r = MockRunner::new(vec![]);
+        let ctx = Ctx {
+            runner: &r,
+            ws,
+            policy: Policy::default(),
+        };
+        assert_eq!(knowledge_note(&ctx), None);
+        r.assert_done();
+    }
+
+    /// A repo with no `knowledge/` at all is the same gap by another route, and
+    /// the note says which of the two it is.
+    #[test]
+    fn doctor_reports_a_missing_knowledge_directory_distinctly() {
+        let (_tmp, ws) = workspace();
+        let r = MockRunner::new(vec![]);
+        let ctx = Ctx {
+            runner: &r,
+            ws,
+            policy: Policy::default(),
+        };
+        let note = knowledge_note(&ctx).expect("an absent knowledge/ is reported too");
+        assert!(
+            note.contains(KNOWLEDGE_DIR) && !note.contains("README"),
+            "an absent directory reads as empty rather than placeholder-only, got {note}"
+        );
+        r.assert_done();
+    }
+
     /// A repo with no `knowledge/` directory still emits the key, so consumers
     /// read an empty index rather than branching on its absence.
     #[test]
