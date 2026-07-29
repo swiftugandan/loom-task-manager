@@ -1,0 +1,16 @@
+[budget]
+tiers_minutes = [
+    10,
+    45,
+    180,
+]
+
+[lease]
+ttl_minutes = 15
+heartbeat_minutes = 5
+
+[schedule]
+staleness_half_life_hours = 72.0
+
+[verify]
+mode = "any"
