@@ -4,7 +4,12 @@ state = "open"
 value = 3.0
 deps = []
 contract = []
-accept = []
-context = ["Audit README.md (220 lines) against src/. Existing sections: Why, Install, Quickstart, Using loom with an agent, Claude Code plugin, Commands, Exit codes, Environment, Policy, How coordination works, Development, Pre-commit hook. Check each documented item still exists and each shipped item is documented."]
+accept = ["tests/readme_coverage.rs"]
+context = [
+    "README.md",
+    "src/main.rs",
+    "src/model.rs",
+    "src/error.rs",
+]
 tier_initial = 0
 created = "2026-07-29T10:11:35.956868Z"
