@@ -173,7 +173,8 @@ enum Cmd {
     /// Read the telemetry + attempt history and emit a report: mechanical
     /// policy suggestions plus knowledge/ file candidates
     Retro,
-    /// Print a task's hydration manifest (context files with existence/size)
+    /// Print a task's hydration manifest: context files with existence/size,
+    /// plus a standing index of knowledge/
     Context { id: String },
 }
 
