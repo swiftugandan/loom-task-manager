@@ -1,6 +1,6 @@
 id = "07cc7160d6"
 goal = "'loom retro' emits knowledge-file candidates alongside its policy suggestions, giving the learning loop a write half into knowledge/"
-state = "open"
+state = "done"
 value = 3.0
 deps = []
 contract = []
